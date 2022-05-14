@@ -704,7 +704,10 @@ namespace Microsoft::Console::Render
             f32 grayscaleEnhancedContrast = 0;
             u32 backgroundColor = 0xff000000;
             u32 selectionColor = 0x7fffffff;
-
+            
+            til::rect presentRect;
+            til::rect scrollRect;
+            i16 scrollOffset = 0;
             CachedCursorOptions cursorOptions;
             RenderInvalidations invalidations = RenderInvalidations::None;
 

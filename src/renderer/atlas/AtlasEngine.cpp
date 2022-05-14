@@ -302,12 +302,13 @@ try
     }
 #endif
 
-    if (_api.invalidatedRows == invalidatedRowsAll)
+    if (_api.invalidatedRows == invalidatedRowsAll || abs(_api.scrollOffset) >= _api.cellCount.y)
     {
         // Skip all the partial updates, since we redraw everything anyways.
         _api.invalidatedCursorArea = invalidatedAreaNone;
         _api.invalidatedRows = { 0, _api.cellCount.y };
         _api.scrollOffset = 0;
+        _r.presentRect = {};
     }
     else
     {
@@ -321,10 +322,6 @@ try
         {
             _api.invalidatedRows.x = std::min(_api.invalidatedRows.x, _api.cellCount.y);
             _api.invalidatedRows.y = clamp(_api.invalidatedRows.y, _api.invalidatedRows.x, _api.cellCount.y);
-        }
-        {
-            const auto limit = gsl::narrow_cast<i16>(_api.cellCount.y & 0x7fff);
-            _api.scrollOffset = gsl::narrow_cast<i16>(clamp<int>(_api.scrollOffset, -limit, limit));
         }
 
         // Scroll the buffer by the given offset and mark the newly uncovered rows as "invalid".
@@ -363,6 +360,20 @@ try
 
             memmove(dst, src, count * sizeof(Cell));
         }
+
+        _r.presentRect = {
+            0,
+            _api.invalidatedRows.x,
+            _api.cellCount.x,
+            _api.invalidatedRows.y,
+        };
+        _r.presentRect |= til::rect{
+            _api.invalidatedCursorArea.left,
+            _api.invalidatedCursorArea.top,
+            _api.invalidatedCursorArea.right,
+            _api.invalidatedCursorArea.bottom,
+        };
+        _r.scrollOffset = _api.scrollOffset;
     }
 
     _api.dirtyRect = til::rect{
@@ -779,7 +790,7 @@ void AtlasEngine::_createSwapChain()
         desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
         desc.BufferCount = 2; // TODO: 3?
         desc.Scaling = DXGI_SCALING_NONE;
-        desc.SwapEffect = _sr.isWindows10OrGreater ? DXGI_SWAP_EFFECT_FLIP_DISCARD : DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
+        desc.SwapEffect = _sr.isWindows10OrGreater ? DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL : DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
         // * HWND swap chains can't do alpha.
         // * If our background is opaque we can enable "independent" flips by setting DXGI_SWAP_EFFECT_FLIP_DISCARD and DXGI_ALPHA_MODE_IGNORE.
         //   As our swap chain won't have to compose with DWM anymore it reduces the display latency dramatically.
@@ -817,7 +828,6 @@ void AtlasEngine::_createSwapChain()
         if (supportsFrameLatencyWaitableObject)
         {
             const auto swapChain2 = _r.swapChain.query<IDXGISwapChain2>();
-            THROW_IF_FAILED(swapChain2->SetMaximumFrameLatency(1)); // TODO: 2?
             _r.frameLatencyWaitableObject.reset(swapChain2->GetFrameLatencyWaitableObject());
             THROW_LAST_ERROR_IF(!_r.frameLatencyWaitableObject);
         }

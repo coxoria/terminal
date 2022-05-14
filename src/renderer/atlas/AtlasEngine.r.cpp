@@ -70,17 +70,58 @@ try
     // > for SwapChains created with DXGI_SWAP_EFFECT_DISCARD or DXGI_SWAP_EFFECT_FLIP_DISCARD.
     // ---> No need to call IDXGISwapChain1::Present1.
     //      TODO: Would IDXGISwapChain1::Present1 and its dirty rects have benefits for remote desktop?
-    THROW_IF_FAILED(_r.swapChain->Present(1, 0));
+    if (!_r.presentRect)
+    {
+        THROW_IF_FAILED(_r.swapChain->Present(1, 0));
+    }
+    else
+    {
+        RECT scrollRect;
+        RECT* pScrollRect = nullptr;
+        POINT scrollOffset;
+        POINT* pScrollOffset = nullptr;
+
+        if (_r.scrollOffset)
+        {
+            if (_r.scrollOffset < 0)
+            {
+                scrollRect = { 0, 0, _r.cellCount.x, _r.presentRect.top };
+            }
+            else
+            {
+                scrollRect = { 0, _r.presentRect.bottom, _r.cellCount.x, _r.cellCount.y };
+            }
+
+            scrollOffset = POINT{ 0, _r.scrollOffset };
+
+            scrollRect.top *= _r.cellSize.y;
+            scrollRect.right *= _r.cellSize.x;
+            scrollRect.bottom *= _r.cellSize.y;
+
+            scrollOffset.y *= _r.cellSize.y;
+
+            pScrollRect = &scrollRect;
+            pScrollOffset = &scrollOffset;
+        }
+
+        _r.presentRect.top *= _r.cellSize.y;
+        _r.presentRect.right *= _r.cellSize.x;
+        _r.presentRect.bottom *= _r.cellSize.y;
+
+        DXGI_PRESENT_PARAMETERS params{};
+        params.DirtyRectsCount = 1;
+        params.pDirtyRects = reinterpret_cast<RECT*>(&_r.presentRect);
+        params.pScrollRect = pScrollRect;
+        params.pScrollOffset = pScrollOffset;
+        THROW_IF_FAILED(_r.swapChain->Present1(1, 0, &params));
+    }
 
     // On some GPUs with tile based deferred rendering (TBDR) architectures, binding
     // RenderTargets that already have contents in them (from previous rendering) incurs a
     // cost for having to copy the RenderTarget contents back into tile memory for rendering.
     //
     // On Windows 10 with DXGI_SWAP_EFFECT_FLIP_DISCARD we get this for free.
-    if (!_sr.isWindows10OrGreater)
-    {
-        _r.deviceContext->DiscardView(_r.renderTargetView.get());
-    }
+    _r.deviceContext->DiscardView(_r.renderTargetView.get());
 
     return S_OK;
 }
